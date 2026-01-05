@@ -200,14 +200,9 @@ def register_student(request):
                         for chunk in img_file.chunks():
                             destination.write(chunk)
                     
-                    # Extract face and generate embedding
-                    face = fr_system.extract_face(temp_path)
-                    if face is None:
-                        os.remove(temp_path)
-                        continue
+                    # Extract face and generate embedding (Single Pass)
+                    embedding, _ = fr_system.process_image(temp_path)
                     
-                    # Generate embedding
-                    embedding = fr_system.get_embedding(face)
                     if embedding is None:
                         os.remove(temp_path)
                         continue

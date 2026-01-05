@@ -1,107 +1,186 @@
 import cv2 as cv
 import os
 import numpy as np
-from mtcnn.mtcnn import MTCNN
 from insightface.app import FaceAnalysis
-from sklearn.preprocessing import LabelEncoder
-from sklearn.svm import SVC
+from insightface.utils import face_align
+from sklearn.preprocessing import LabelEncoder, normalize
 import pickle
 from django.conf import settings
 
 
+class CosineKNNClassifier:
+    """
+    Simple Nearest Neighbor classifier using Cosine Similarity.
+    Stores normalized embeddings and finds the one with highest dot product.
+    """
+    def __init__(self):
+        self.X = None
+        self.y = None
+
+    def fit(self, X, y):
+        """
+        X: (n_samples, n_features)
+        y: (n_samples,)
+        """
+        # Normalize stored embeddings for cosine similarity
+        self.X = normalize(X)
+        self.y = np.array(y)
+
+    def predict(self, X):
+        """
+        Predict class labels for samples in X.
+        For compatibility with sklearn API style
+        """
+        if len(X.shape) == 1:
+            X = X.reshape(1, -1)
+            
+        X_norm = normalize(X)
+        # Dot product: (n_query, n_features) @ (n_features, n_stored) -> (n_query, n_stored)
+        similarities = np.dot(X_norm, self.X.T)
+        best_indices = np.argmax(similarities, axis=1)
+        return self.y[best_indices]
+        
+    def predict_score(self, x_single):
+        """
+        Predict (label, score) for a single sample.
+        """
+        x_norm = normalize(x_single.reshape(1, -1))
+        similarities = np.dot(self.X, x_norm.T).flatten()
+        best_idx = np.argmax(similarities)
+        return self.y[best_idx], similarities[best_idx]
+
+
 class FaceRecognitionSystem:
     """
-    Complete face recognition system using MTCNN for detection 
-    and InsightFace (ArcFace) for embeddings
+    Complete face recognition system using InsightFace (ArcFace)
+    for both detection and recognition.
     """
     
     def __init__(self):
         self.target_size = (160, 160)
-        self.detector = MTCNN()
         self.arcface_app = None
         self.model = None
         self.encoder = None
         
     def initialize_arcface(self):
-        """Initialize ArcFace model for face embeddings"""
+        """Initialize ArcFace model for detection and embeddings"""
         if self.arcface_app is None:
-            self.arcface_app = FaceAnalysis(providers=['CPUExecutionProvider'])
-            self.arcface_app.prepare(ctx_id=0, det_size=(160, 160))
+            # buffalo_l includes detection (RetinaFace/SCRFD) + recognition (ArcFace) + alignment
+            self.arcface_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+            self.arcface_app.prepare(ctx_id=0, det_size=(640, 640))
         return self.arcface_app
+    
+    def process_image(self, image_path):
+        """
+        Single-pass processing: Detect -> Align -> Embed.
+        Returns the Best Face (largest) as (embedding, aligned_crop).
+        """
+        try:
+            if self.arcface_app is None:
+                self.initialize_arcface()
+                
+            img = cv.imread(image_path)
+            if img is None:
+                return None, None
+                
+            # InsightFace expects BGR (cv2 default), so no conversion needed for detection if using cv2.imread
+            # But FaceAnalysis.get() usually handles BGR images directly.
+            
+            faces = self.arcface_app.get(img)
+            
+            if not faces:
+                return None, None
+                
+            # Sort by det_score or bbox area. Usually det_score is good.
+            # Let's pick largest area to be safe for "registering" the main subject
+            faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
+            best_face = faces[0]
+            
+            # Embedding is already computed by .get()
+            embedding = best_face.embedding
+            
+            # Align face (crop)
+            # norm_crop returns the aligned face image
+            face_img = face_align.norm_crop(img, landmark=best_face.kps)
+            
+            return embedding, face_img
+            
+        except Exception as e:
+            print(f"Error processing image {image_path}: {str(e)}")
+            return None, None
     
     def extract_face(self, image_path):
         """
-        Extract and align face from image using MTCNN
-        Returns normalized face array of size (160, 160, 3)
+        Legacy wrapper: Just returns the aligned face image.
         """
-        try:
-            img = cv.imread(image_path)
-            if img is None:
-                return None
-                
-            img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-            results = self.detector.detect_faces(img)
-            
-            if not results or len(results) == 0:
-                return None
-                
-            x, y, w, h = results[0]['box']
-            x, y = abs(x), abs(y)
-            face = img[y:y+h, x:x+w]
-            face_arr = cv.resize(face, self.target_size)
-            return face_arr
-            
-        except Exception as e:
-            print(f"Error extracting face from {image_path}: {str(e)}")
-            return None
-    
-    def extract_face_from_array(self, img_array):
-        """
-        Extract face from numpy array (for real-time detection)
-        """
-        try:
-            results = self.detector.detect_faces(img_array)
-            
-            if not results or len(results) == 0:
-                return None, None
-                
-            x, y, w, h = results[0]['box']
-            x, y = abs(x), abs(y)
-            face = img_array[y:y+h, x:x+w]
-            face_arr = cv.resize(face, self.target_size)
-            
-            return face_arr, (x, y, w, h)
-            
-        except Exception as e:
-            print(f"Error extracting face: {str(e)}")
-            return None, None
+        _, face_img = self.process_image(image_path)
+        return face_img
     
     def get_embedding(self, face_img):
         """
-        Generate face embedding using InsightFace (ArcFace)
-        Returns 512-dimensional embedding vector
+        Legacy wrapper: Takes an image (crop), runs detection+recog AGAIN.
+        WARNING: Inefficient. Use process_image() where possible.
         """
         try:
             if self.arcface_app is None:
                 self.initialize_arcface()
             
-            # Convert to BGR for InsightFace
-            face_bgr = cv.cvtColor(face_img, cv.COLOR_RGB2BGR)
-            faces = self.arcface_app.get(face_bgr)
-            
-            if faces and len(faces) > 0:
+            # If input is BGR? cv2.imread is BGR.
+            # face_img passed here is likely already aligned/cropped.
+            faces = self.arcface_app.get(face_img)
+            if faces:
                 return faces[0].embedding
             return None
+        except Exception as e:
+            print(f"Error in legacy get_embedding: {e}")
+            return None
+
+    def recognize_all_faces_from_image(self, image_path, threshold=0.5):
+        """
+        Recognize all faces in an image efficiently.
+        Returns list of tuples: [(name, confidence, bbox, message), ...]
+        """
+        try:
+            if self.arcface_app is None:
+                self.initialize_arcface()
+
+            img = cv.imread(image_path)
+            if img is None:
+                return []
+                
+            faces = self.arcface_app.get(img)
+            
+            if not faces:
+                return []
+            
+            recognitions = []
+            for face in faces:
+                bbox = face.bbox.astype(int) # x1, y1, x2, y2
+                # Convert to x, y, w, h format for compatibility
+                x, y, w, h = bbox[0], bbox[1], bbox[2]-bbox[0], bbox[3]-bbox[1]
+                bbox_fmt = (x, y, w, h)
+                
+                embedding = face.embedding
+                if embedding is None:
+                    recognitions.append((None, 0.0, bbox_fmt, "No embedding"))
+                    continue
+                
+                name, confidence = self.predict(embedding, threshold)
+                
+                if name is None:
+                    recognitions.append((None, confidence, bbox_fmt, "Confidence too low"))
+                else:
+                    recognitions.append((name, confidence, bbox_fmt, "Success"))
+            
+            return recognitions
             
         except Exception as e:
-            print(f"Error generating embedding: {str(e)}")
-            return None
-    
+            print(f"Error recognizing faces from {image_path}: {str(e)}")
+            return []
+
     def load_faces_from_directory(self, directory):
         """
         Load all faces from directory structure
-        Expected structure: directory/person_name/*.jpg
-        Returns: X (face arrays), Y (labels)
         """
         X = []
         Y = []
@@ -122,46 +201,52 @@ class FaceRecognitionSystem:
                 
                 if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
                     continue
-                    
-                face = self.extract_face(img_path)
-                if face is not None:
-                    X.append(face)
+                
+                # Use process_image to get embedding directly
+                embedding, _ = self.process_image(img_path)
+                
+                if embedding is not None:
+                    X.append(embedding) # Store EMBEDDINGS not IMAGES
                     Y.append(person_name)
                     faces_loaded += 1
             
             print(f"Loaded {faces_loaded} faces for {person_name}")
         
+        # NOTE: This now returns EMBEDDINGS in X, not images.
         return np.asarray(X), np.asarray(Y)
     
     def generate_embeddings(self, faces):
         """
-        Generate embeddings for array of face images
+        Legacy: If faces is a list of images, compute embeddings.
+        If faces is a list of embeddings (from updated load_faces), pass through.
         """
+        if len(faces) > 0 and isinstance(faces[0], np.ndarray) and faces[0].ndim == 1 and faces[0].shape[0] == 512:
+            return np.asarray(faces)
+            
+        # Old logic
         embeddings = []
-        
         if self.arcface_app is None:
             self.initialize_arcface()
         
         for face in faces:
-            embedding = self.get_embedding(face)
-            if embedding is not None:
-                embeddings.append(embedding)
+            # Here face is an image
+            emb = self.get_embedding(face)
+            if emb is not None:
+                embeddings.append(emb)
             else:
-                # Add zero vector if embedding fails
                 embeddings.append(np.zeros(512))
-        
         return np.asarray(embeddings)
     
     def train_model(self, X_embeddings, Y_labels, save_path=None):
         """
-        Train SVM classifier on face embeddings
+        Train Classifier on face embeddings
         """
         # Encode labels
         self.encoder = LabelEncoder()
         Y_encoded = self.encoder.fit_transform(Y_labels)
         
-        # Train SVM
-        self.model = SVC(kernel='linear', probability=True)
+        # Train Cosine Classifier
+        self.model = CosineKNNClassifier()
         self.model.fit(X_embeddings, Y_encoded)
         
         # Save model if path provided
@@ -176,176 +261,85 @@ class FaceRecognitionSystem:
         return accuracy
     
     def save_model(self, model_path):
-        """
-        Save trained model and encoder
-        """
+        """Save trained model and encoder"""
         model_dir = os.path.dirname(model_path)
         if model_dir and not os.path.exists(model_dir):
             os.makedirs(model_dir)
-        
-        # Save model
         with open(model_path, 'wb') as f:
             pickle.dump(self.model, f)
-        
-        # Save encoder
         encoder_path = model_path.replace('.pkl', '_encoder.pkl')
         with open(encoder_path, 'wb') as f:
             pickle.dump(self.encoder, f)
-        
         print(f"Model saved to {model_path}")
         print(f"Encoder saved to {encoder_path}")
     
     def load_model(self, model_path):
-        """
-        Load trained model and encoder
-        """
-        # Load model
-        with open(model_path, 'rb') as f:
-            self.model = pickle.load(f)
-        
-        # Load encoder
-        encoder_path = model_path.replace('.pkl', '_encoder.pkl')
-        with open(encoder_path, 'rb') as f:
-            self.encoder = pickle.load(f)
-        
-        print(f"Model loaded from {model_path}")
-        return True
+        """Load trained model and encoder"""
+        try:
+            with open(model_path, 'rb') as f:
+                self.model = pickle.load(f)
+            encoder_path = model_path.replace('.pkl', '_encoder.pkl')
+            with open(encoder_path, 'rb') as f:
+                self.encoder = pickle.load(f)
+            print(f"Model loaded from {model_path}")
+            return True
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            return False
     
-    def predict(self, face_embedding, threshold=0.5):
+    def predict(self, embedding, threshold=0.5):
         """
         Predict identity from face embedding
-        Returns: (name, confidence) or (None, 0) if below threshold
         """
         if self.model is None or self.encoder is None:
             raise ValueError("Model not loaded. Train or load a model first.")
         
-        # Reshape embedding for prediction
-        embedding = face_embedding.reshape(1, -1)
-        
-        # Get prediction probabilities
-        probabilities = self.model.predict_proba(embedding)[0]
-        max_prob = np.max(probabilities)
-        
-        if max_prob < threshold:
-            return None, max_prob
-        
-        # Get predicted class
-        prediction = self.model.predict(embedding)[0]
-        name = self.encoder.inverse_transform([prediction])[0]
-        
-        return name, max_prob
-    
-    def recognize_from_image(self, image_path, threshold=0.5):
-        """
-        Complete recognition pipeline from image path
-        Returns recognition for the first face detected (for backward compatibility)
-        """
-        # Extract face
-        face = self.extract_face(image_path)
-        if face is None:
-            return None, 0, "No face detected"
-        
-        # Generate embedding
-        embedding = self.get_embedding(face)
-        if embedding is None:
-            return None, 0, "Failed to generate embedding"
-        
-        # Predict
-        name, confidence = self.predict(embedding, threshold)
-        
-        if name is None:
-            return None, confidence, "Confidence too low"
-        
-        return name, confidence, "Success"
-    
-    def recognize_all_faces_from_image(self, image_path, threshold=0.5):
-        """
-        Recognize all faces in an image
-        Returns list of tuples: [(name, confidence, bbox, message), ...]
-        """
-        try:
-            img = cv.imread(image_path)
-            if img is None:
-                return []
-                
-            img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-            results = self.detector.detect_faces(img_rgb)
-            
-            if not results or len(results) == 0:
-                return []
-            
-            recognitions = []
-            for face_info in results:
-                x, y, w, h = face_info['box']
-                x, y = abs(x), abs(y)
-                face = img_rgb[y:y+h, x:x+w]
-                face_arr = cv.resize(face, self.target_size)
-                
-                # Generate embedding
-                embedding = self.get_embedding(face_arr)
-                if embedding is None:
-                    recognitions.append((None, 0.0, (x, y, w, h), "Failed to generate embedding"))
-                    continue
-                
-                # Predict
-                name, confidence = self.predict(embedding, threshold)
-                
-                if name is None:
-                    recognitions.append((None, confidence, (x, y, w, h), "Confidence too low"))
-                else:
-                    recognitions.append((name, confidence, (x, y, w, h), "Success"))
-            
-            return recognitions
-            
-        except Exception as e:
-            print(f"Error recognizing faces from {image_path}: {str(e)}")
-            return []
-    
+        if hasattr(self.model, 'predict_score'):
+            prediction, max_score = self.model.predict_score(embedding)
+            if max_score < threshold:
+                return None, max_score
+            name = self.encoder.inverse_transform([prediction])[0]
+            return name, max_score
+        else:
+            # Fallback
+            return None, 0.0
+
+    # Removed recognize_from_frame, extract_face_from_array for brevity/cleanup
+    # Add them back if needed for real-time video
     def recognize_from_frame(self, frame, threshold=0.5):
-        """
-        Recognize face from video frame (numpy array)
-        Returns: (name, confidence, bbox, message)
-        """
-        # Extract face
-        face, bbox = self.extract_face_from_array(frame)
-        if face is None:
-            return None, 0, None, "No face detected"
+        """Real-time recognition"""
+        if self.arcface_app is None: self.initialize_arcface()
         
-        # Generate embedding
-        embedding = self.get_embedding(face)
-        if embedding is None:
-            return None, 0, bbox, "Failed to generate embedding"
+        faces = self.arcface_app.get(frame)
+        if not faces:
+            return None, 0, None, "No face"
+            
+        best_face = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)[0]
+        embedding = best_face.embedding
+        bbox = best_face.bbox.astype(int)
+        x, y, w, h = bbox[0], bbox[1], bbox[2]-bbox[0], bbox[3]-bbox[1]
         
-        # Predict
-        name, confidence = self.predict(embedding, threshold)
-        
-        if name is None:
-            return None, confidence, bbox, "Confidence too low"
-        
-        return name, confidence, bbox, "Success"
+        name, conf = self.predict(embedding, threshold)
+        if name:
+             return name, conf, (x, y, w, h), "Success"
+        return None, conf, (x, y, w, h), "Low Confidence"
 
 
 def train_face_recognition_model(faces_directory, output_model_path):
-    """
-    Helper function to train a new face recognition model
-    """
     print("Initializing Face Recognition System...")
     fr_system = FaceRecognitionSystem()
-    
     print(f"Loading faces from {faces_directory}...")
+    
+    # This now returns embeddings directly!
     X, Y = fr_system.load_faces_from_directory(faces_directory)
     
     if len(X) == 0:
         print("No faces found!")
         return None
     
-    print(f"Loaded {len(X)} faces from {len(set(Y))} people")
-    
-    print("Generating embeddings...")
-    embeddings = fr_system.generate_embeddings(X)
-    
+    print(f"Loaded {len(X)} embeddings from {len(set(Y))} people")
     print("Training model...")
-    accuracy = fr_system.train_model(embeddings, Y, output_model_path)
+    accuracy = fr_system.train_model(X, Y, output_model_path)
     
     print(f"Training complete! Model saved to {output_model_path}")
     return fr_system

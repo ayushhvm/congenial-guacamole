@@ -1,289 +1,142 @@
-# Face Recognition Attendance Management System
+# 📸 Face Recognition Attendance System
 
-A Django-based attendance management system using facial recognition with MTCNN for face detection and InsightFace (ArcFace) for face embeddings.
+A robust, AI-powered attendance tracking system built with **Django** and **InsightFace**. It allows detailed student management, automated face-based attendance marking, and comprehensive reporting.
 
-## Features
+## 🌟 Features
 
-- Student registration with face images
-- Face recognition model training using SVM
-- Real-time attendance marking
-- Session management
-- High accuracy face recognition using ArcFace embeddings
+*   **AI-Powered Recognition**: Uses **InsightFace (ArcFace)** for state-of-the-art accuracy (99%+).
+*   **Anti-Dilution Logic**: Implements Cosine Similarity with dynamic thresholding to ensure accuracy doesn't drop as you add more students.
+*   **Role-Based Access**:
+    *   **Teachers**: Manage students, train models, create sessions, mark attendance, and view reports.
+    *   **Students**: View their own attendance history and stats.
+*   **Automated Attendance**: "Auto-Capture" mode for sessions to automatically snap and process photos at set intervals.
+*   **Bulk Management**: Command-line tools to register hundreds of students and teachers instantly.
+*   **Analytics**: Built-in tools to analyze model health, identifying lookalikes and bad data.
 
-## Installation
+---
 
-### 1. Virtual Environment Setup
+## 🛠️ Technology Stack
+
+*   **Backend**: Django 5.x (Python 3.11+)
+*   **AI Engine**: InsightFace (RetinaFace for detection, ArcFace for embedding) + Scikit-Learn (KNN)
+*   **Database**: SQLite (Default) / PostgreSQL (Supported)
+*   **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
+*   **Queueing**: (Optional) Redis/Celery for Async tasks.
+
+---
+
+## 🚀 Installation & Setup
+
+### 1. Prerequisites
+*   Python 3.10 or higher
+*   C++ Build Tools (for InsightFace dependencies)
+
+### 2. Clone and Install
 ```bash
-python3.11 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+git clone <repository-url>
+cd Trackapp
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Mac/Linux
+# venv\Scripts\activate   # Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Database Setup
+### 3. Setup Database
 ```bash
+# Apply migrations
 python manage.py migrate
-python manage.py createsuperuser
 ```
 
-### 3. Create Media Directories
-The system will automatically create these directories, but you can also create them manually:
+### 4. Create Admin/Teacher
+You can create a teacher via command line:
 ```bash
-mkdir -p media/faces media/models media/attendance_images
+python manage.py register_teacher --id "T001" --name "Ayush V Mangalgi" --password "securepass123" --email "ayush@example.com"
 ```
 
-## Usage
-
-### 1. Register Students
-
-#### Option A: Using Management Command
-```bash
-python manage.py register_student <student_id> <first_name> <last_name> <email> --images-dir /path/to/images --department "Computer Science" --year 2
-```
-
-Example:
-```bash
-python manage.py register_student S001 John Doe john@example.com --images-dir ./student_photos/john --department "CS" --year 3
-```
-
-#### Option B: Using Django Admin
-1. Go to http://localhost:8000/admin
-2. Navigate to Students
-3. Add student details
-4. Then add face embeddings separately
-
-### 2. Prepare Face Images
-
-Organize student face images in this structure:
-```
-faces/
-├── student_id_1/
-│   ├── img1.jpg
-│   ├── img2.jpg
-│   └── img3.jpg
-├── student_id_2/
-│   ├── img1.jpg
-│   └── img2.jpg
-└── ...
-```
-
-**Tips for best results:**
-- Use 5-10 images per student
-- Include different angles and lighting conditions
-- Ensure clear, frontal face images
-- Resolution: 160x160 pixels or higher
-
-### 3. Train the Model
-
-#### Option A: Train from Directory
-```bash
-python manage.py train_model --from-directory ./faces --set-active
-```
-
-#### Option B: Train from Database
-```bash
-python manage.py train_model --model-name my_model_v1 --set-active
-```
-
-This will:
-- Load all face embeddings from registered students
-- Train an SVM classifier
-- Save the model to `media/models/`
-- Display training accuracy
-
-### 4. Test Recognition
-
-Test the model on a single image:
-```bash
-python manage.py test_recognition /path/to/test_image.jpg --threshold 0.6
-```
-
-### 5. Create Attendance Session
-
-You can create sessions through Django admin or programmatically:
-
-**Via Django Admin:**
-1. Go to http://localhost:8000/admin
-2. Navigate to "Attendance Sessions"
-3. Add a new session with:
-   - Session name
-   - Course name
-   - Date, start time, end time
-
-**Via Django Shell:**
-```python
-python manage.py shell
-
-from attendance.models import AttendanceSession
-from datetime import date, time
-
-session = AttendanceSession.objects.create(
-    session_name="Morning Lecture",
-    course_name="Machine Learning",
-    session_date=date.today(),
-    start_time=time(9, 0),
-    end_time=time(11, 0)
-)
-```
-
-### 6. Mark Attendance
-
-Mark attendance using face recognition:
-```bash
-python manage.py mark_attendance /path/to/student_image.jpg <session_id> --threshold 0.6
-```
-
-Example:
-```bash
-python manage.py mark_attendance ./captured_face.jpg 1 --threshold 0.6
-```
-
-## Management Commands Reference
-
-### `register_student`
-Register a new student with face images.
-
-**Arguments:**
-- `student_id`: Unique student identifier
-- `first_name`: Student's first name
-- `last_name`: Student's last name
-- `email`: Student's email
-
-**Options:**
-- `--images-dir`: Directory containing face images
-- `--department`: Department name
-- `--year`: Year of study
-- `--phone`: Phone number
-
-### `train_model`
-Train the face recognition model.
-
-**Options:**
-- `--model-name`: Name for the model (default: auto-generated)
-- `--from-directory`: Train from directory structure
-- `--set-active`: Set as active model after training
-
-### `test_recognition`
-Test face recognition on an image.
-
-**Arguments:**
-- `image_path`: Path to test image
-
-**Options:**
-- `--threshold`: Confidence threshold (default: 0.5)
-- `--model-id`: Specific model ID to use
-
-### `mark_attendance`
-Mark attendance from an image.
-
-**Arguments:**
-- `image_path`: Path to student image
-- `session_id`: Session ID
-
-**Options:**
-- `--threshold`: Confidence threshold (default: 0.6)
-
-## Django Models
-
-### Student
-- `student_id`: Unique identifier
-- `first_name`, `last_name`: Name
-- `email`: Contact email
-- `department`, `year`: Academic info
-- `is_active`: Active status
-
-### FaceEmbedding
-- `student`: Foreign key to Student
-- `embedding`: 512-dimensional face embedding
-- `image_path`: Path to original image
-
-### AttendanceSession
-- `session_name`: Session identifier
-- `course_name`: Course name
-- `session_date`: Date of session
-- `start_time`, `end_time`: Time range
-
-### AttendanceRecord
-- `student`: Foreign key to Student
-- `session`: Foreign key to AttendanceSession
-- `status`: present/absent/late
-- `confidence_score`: Recognition confidence
-- `marked_at`: Timestamp
-
-## API Integration (Future)
-
-The system is designed to support REST API integration for:
-- Real-time webcam attendance
-- Mobile app integration
-- Bulk attendance processing
-
-## Troubleshooting
-
-### No face detected
-- Ensure image has clear frontal face
-- Check lighting conditions
-- Verify image quality
-
-### Low confidence scores
-- Add more training images per student
-- Retrain model with better quality images
-- Adjust threshold parameter
-
-### Model accuracy issues
-- Collect more diverse training images
-- Ensure minimum 5 images per student
-- Check for duplicate/mislabeled images
-
-## Technologies Used
-
-- **Django 5.2.9**: Web framework
-- **MTCNN**: Face detection
-- **InsightFace (ArcFace)**: Face embeddings
-- **scikit-learn**: SVM classifier
-- **OpenCV**: Image processing
-- **NumPy**: Numerical operations
-
-## Directory Structure
-
-```
-TrueLegend/
-├── attendance/              # Main Django app
-│   ├── models.py           # Database models
-│   ├── admin.py            # Admin configuration
-│   ├── management/         # Management commands
-│   │   └── commands/
-│   │       ├── register_student.py
-│   │       ├── train_model.py
-│   │       ├── test_recognition.py
-│   │       └── mark_attendance.py
-│   └── utils/              # Utilities
-│       └── face_recognition.py
-├── attendance_system/      # Django project settings
-├── media/                  # Media files
-│   ├── faces/             # Student face images
-│   ├── models/            # Trained models
-│   └── attendance_images/ # Captured attendance images
-├── db.sqlite3             # Database
-├── manage.py              # Django management script
-└── requirements.txt       # Python dependencies
-```
-
-## Running the Development Server
-
+### 5. Run Server
 ```bash
 python manage.py runserver
 ```
+Access the app at `http://127.0.0.1:8000`.
 
-Access admin panel at: http://localhost:8000/admin
+---
 
-## Next Steps
+## 📖 Usage Guide
 
-1. Implement web interface for attendance marking
-2. Add REST API endpoints
-3. Real-time webcam integration
-4. Attendance reports and analytics
-5. Email notifications
-6. Mobile app integration
+### 🧑‍🏫 Teacher Workflow
 
-## License
+1.  **Login**: Use your Teacher ID and Password.
+2.  **Register Students**:
+    *   **Manual**: Go to "Register Student", enter details, and upload 5-10 clear face photos.
+    *   **Bulk**: See [Management Commands](#-management-commands) below.
+3.  **Train Model**:
+    *   Go to "Train V2" (or "Train Model" in dashboard).
+    *   Click "Train Now". This processes all registered student faces into the recognition engine.
+    *   *Note: Retrain whenever you add new students.*
+4.  **Create Session**:
+    *   Go to "Sessions" -> "New Session".
+    *   Set Course Name (e.g., "CS101"), Date, and Time.
+    *   **Auto-Capture**: Enable to have the system auto-record attendance every X seconds (requires camera feed).
+5.  **Mark Attendance**:
+    *   **Upload**: Upload a group photo of the class. The system detects faces and marks them present.
+    *   **Live**: (If enabled) Use the camera interface.
 
-MIT License
+### 🧑‍🎓 Student Workflow
+
+1.  **Login**: Use Student ID (e.g., "S001") and Password.
+2.  **Dashboard**: View attendance percentage, total present/absent classes.
+3.  **My Attendance**: Filter history by course or date.
+
+---
+
+## ⚡ Management Commands
+
+The system includes powerful CLI tools for administration.
+
+### 1. Bulk Register Students
+Registers students from a CSV/Excel or structured folder.
+```bash
+python manage.py register_bulk
+```
+*   Expects images in `yamages/` folder named by Student ID (e.g., `yamages/001/`).
+*   Automatically detects faces, generates embeddings, and saves to DB.
+
+### 2. Analyze Model Health 🏥
+Checks your dataset quality. Critical for maintaining high accuracy.
+```bash
+python manage.py analyze_model_quality
+```
+*   **Separability**: Tells you how distinct students are from each other.
+*   **Outliers**: Finds "bad images" that don't look like the student.
+*   **Threshold**: Suggests the perfect strictness (e.g., 0.50) to avoid false positives.
+
+### 3. Register Teacher
+```bash
+python manage.py register_teacher --id <ID> --name <NAME> --password <PASS>
+```
+
+### 4. Clean Corrupted Data
+If necessary, remove empty embeddings.
+```bash
+python manage.py clear_corrupted_embeddings
+```
+
+---
+
+## 🔧 Troubleshooting
+
+**Q: "Model not loaded" error?**
+A: You must train the model at least once. Log in as Teacher -> Train Model -> Click Train.
+
+**Q: False Positives (Wrong person recognized)?**
+A: 
+1. Run `python manage.py analyze_model_quality`.
+2. check for "Lookalikes" or bad data.
+3. Increase the **Threshold** when marking attendance (e.g., from 0.5 to 0.6).
+
+**Q: "No face detected" in valid image?**
+A: Ensure the image is not upside down. The system uses a high-accuracy detector (RetinaFace), so it handles side profiles well, but extreme angles or extreme blur can fail.

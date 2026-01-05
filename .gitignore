@@ -32,6 +32,7 @@ db.sqlite3-journal
 # Media and Static files
 media/
 staticfiles/
+yamages/
 
 # IDE
 .idea/
@@ -55,3 +56,6 @@ staticfiles/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Agent
+.gemini/
