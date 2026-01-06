@@ -67,10 +67,13 @@ Attendance{%endblock %} {% block content %}
       {% for result in results %}
       <tr>
         <td>
-          {% if result.student %} {{ result.student.student_id }} - {{result.student.first_name }} {{
-          result.student.last_name }}
-          {% elif result.student_id %} {{ result.student_id }} (Not found in database)
-          {% else %} Unknown {% endif %}
+          {% if result.student %}
+          {{ result.student.student_id }} - {{ result.student.first_name }} {{ result.student.last_name }}
+          {% elif result.student_id %}
+          {{ result.student_id }} (Not found in database)
+          {% else %}
+          Unknown
+          {% endif %}
         </td>
         <td>
           {% if result.status == 'marked' %}

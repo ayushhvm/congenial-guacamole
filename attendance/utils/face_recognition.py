@@ -10,10 +10,13 @@ from django.conf import settings
 
 class CosineKNNClassifier:
     """
-    Simple Nearest Neighbor classifier using Cosine Similarity.
-    Stores normalized embeddings and finds the one with highest dot product.
+    k-Nearest Neighbor classifier using Cosine Similarity.
+    Features:
+    - Weighted voting (closer neighbors count more)
+    - Consensus score (confidence)
     """
-    def __init__(self):
+    def __init__(self, k=5):
+        self.k = k
         self.X = None
         self.y = None
 
@@ -29,25 +32,112 @@ class CosineKNNClassifier:
     def predict(self, X):
         """
         Predict class labels for samples in X.
-        For compatibility with sklearn API style
         """
+        # Backward compatibility for models trained before k-NN update
+        if not hasattr(self, 'k'):
+            self.k = 5
+
         if len(X.shape) == 1:
             X = X.reshape(1, -1)
             
         X_norm = normalize(X)
         # Dot product: (n_query, n_features) @ (n_features, n_stored) -> (n_query, n_stored)
         similarities = np.dot(X_norm, self.X.T)
-        best_indices = np.argmax(similarities, axis=1)
-        return self.y[best_indices]
+        
+        predictions = []
+        for i in range(len(X)):
+            # Get top k indices
+            # argsort is ascending, so take last k and reverse
+            top_k_idx = np.argsort(similarities[i])[-self.k:][::-1]
+            top_k_scores = similarities[i][top_k_idx]
+            top_k_labels = self.y[top_k_idx]
+            
+            # Weighted voting
+            vote_counts = {}
+            for label, score in zip(top_k_labels, top_k_scores):
+                if label not in vote_counts:
+                    vote_counts[label] = 0.0
+                # Weight can be just the score (cosine similarity)
+                # You can also square it to punish lower scores more: score**2
+                vote_counts[label] += score 
+                
+            best_label = max(vote_counts, key=vote_counts.get)
+            predictions.append(best_label)
+            
+        return np.array(predictions)
         
     def predict_score(self, x_single):
         """
-        Predict (label, score) for a single sample.
+        Predict (label, confidence_score) for a single sample.
+        Confidence is calculated as the weighted fraction of the winning class.
         """
+        # Backward compatibility
+        if not hasattr(self, 'k'):
+            self.k = 5
+
         x_norm = normalize(x_single.reshape(1, -1))
         similarities = np.dot(self.X, x_norm.T).flatten()
-        best_idx = np.argmax(similarities)
-        return self.y[best_idx], similarities[best_idx]
+        
+        # Get top k
+        top_k_idx = np.argsort(similarities)[-self.k:][::-1]
+        top_k_scores = similarities[top_k_idx]
+        top_k_labels = self.y[top_k_idx]
+        
+        vote_counts = {}
+        total_weight = 0.0
+        
+        for label, score in zip(top_k_labels, top_k_scores):
+            # Only consider positive similarities for meaningful voting
+            weight = max(0, score) 
+            if label not in vote_counts:
+                vote_counts[label] = 0.0
+            vote_counts[label] += weight
+            total_weight += weight
+            
+        if total_weight == 0:
+            # Should not happen unless all similarities are negative/zero
+            return None, 0.0
+            
+        best_label = max(vote_counts, key=vote_counts.get)
+        # Confidence: Proportion of total weight associated with the winner
+        # Alternatively, could just return the max average score.
+        # Let's return the average score of the supporting neighbors for the winner
+        # as it represents "how close" they are, rather than just "how many".
+        # But 'confidence' usually implies certainty.
+        
+        # Let's use a hybrid: (Total Weight of Winner) / k  ? 
+        # No, that depends on k.
+        # Let's use: (Total Weight of Winner) / (Total Weight of Top K)
+        # This represents "purity" of the neighborhood.
+        # AND scale it by the best individual score to represent "closeness".
+        
+        purity = vote_counts[best_label] / total_weight
+        best_single_score = top_k_scores[0]
+        
+        # Combined score: Purity * BestScore? 
+        # Or just use the best single score but require consensus?
+        # Let's stick to the simplest effective one:
+        # Returns: best_label, and the weighted average similarity of the k neighbors 
+        # (treating non-class neighbors as 0? No, that punishes split neighborhoods too hard).
+        
+        # Let's use: Average score of the matching neighbors for the winning class.
+        # This tells us "how similar are the neighbors that voted for this person?"
+        
+        # Actuall, standard for these is often just the top 1 score, 
+        # but validated by neighbors. 
+        # Let's return the Top 1 Score, but we verify if it won the vote.
+        # If it didn't win the vote, we might return the winner's score.
+        
+        # Let's go with: Return Best Label from Voting, 
+        # Score = Average Cosine Similarity of the voters for that label.
+        
+        winner_score_sum = vote_counts[best_label] 
+        # valid voters are those with label == best_label in top k
+        num_voters = np.sum(top_k_labels == best_label)
+        
+        avg_score = winner_score_sum / num_voters if num_voters > 0 else 0.0
+        
+        return best_label, avg_score
 
 
 class FaceRecognitionSystem:
@@ -70,10 +160,11 @@ class FaceRecognitionSystem:
             self.arcface_app.prepare(ctx_id=0, det_size=(640, 640))
         return self.arcface_app
     
-    def process_image(self, image_path):
+    def process_image(self, image_path, min_score=0.0):
         """
         Single-pass processing: Detect -> Align -> Embed.
         Returns the Best Face (largest) as (embedding, aligned_crop).
+        Filters out faces with detection score < min_score.
         """
         try:
             if self.arcface_app is None:
@@ -95,6 +186,10 @@ class FaceRecognitionSystem:
             # Let's pick largest area to be safe for "registering" the main subject
             faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
             best_face = faces[0]
+            
+            if best_face.det_score < min_score:
+                print(f"Rejected Low Quality Face in {os.path.basename(image_path)}: Score {best_face.det_score:.3f}")
+                return None, None
             
             # Embedding is already computed by .get()
             embedding = best_face.embedding
@@ -180,7 +275,8 @@ class FaceRecognitionSystem:
 
     def load_faces_from_directory(self, directory):
         """
-        Load all faces from directory structure
+        Load all faces from directory structure.
+        Enforces strict quality check (min_score=0.65) for training data.
         """
         X = []
         Y = []
@@ -202,8 +298,9 @@ class FaceRecognitionSystem:
                 if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
                     continue
                 
-                # Use process_image to get embedding directly
-                embedding, _ = self.process_image(img_path)
+                # Use process_image to get embedding directly with QUALITY CHECK
+                # 0.65 is reasonable for "good" faces
+                embedding, _ = self.process_image(img_path, min_score=0.65) 
                 
                 if embedding is not None:
                     X.append(embedding) # Store EMBEDDINGS not IMAGES

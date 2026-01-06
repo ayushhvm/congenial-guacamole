@@ -7,13 +7,9 @@ django.setup()
 from attendance.models import AttendanceSession
 from django.utils import timezone
 
-s = AttendanceSession.objects.filter(session_name="Theory 2").last()
-if s:
-    print(f"Session: {s.session_name}")
-    print(f"Date: {s.session_date}")
-    print(f"Start: {s.start_time}")
-    print(f"End: {s.end_time}")
-    print(f"Current Time (UTC): {timezone.now()}")
-    print(f"Current Time (Local): {timezone.localtime(timezone.now())}")
-else:
-    print("Session not found")
+sessions = AttendanceSession.objects.all().order_by('-id')[:5]
+print(f"{'ID':<5} | {'Name':<20} | {'Date':<12} | {'Active'}")
+print("-" * 50)
+for s in sessions:
+    is_active = s.is_active
+    print(f"{s.id:<5} | {s.session_name:<20} | {s.session_date} | {is_active}")
