@@ -7,9 +7,7 @@ Session{%endblock %} {% block content %}
     {% csrf_token %}
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.session_name.id_for_label }}"
-        >{{ form.session_name.label }}</label
-      >
+      <label class="form-label" for="{{ form.session_name.id_for_label }}">{{ form.session_name.label }}</label>
       {{ form.session_name }} {% if form.session_name.errors %}
       <div class="help-text" style="color: #f44336">
         {{ form.session_name.errors }}
@@ -18,9 +16,7 @@ Session{%endblock %} {% block content %}
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.course_name.id_for_label }}"
-        >{{ form.course_name.label }}</label
-      >
+      <label class="form-label" for="{{ form.course_name.id_for_label }}">{{ form.course_name.label }}</label>
       {{ form.course_name }} {% if form.course_name.errors %}
       <div class="help-text" style="color: #f44336">
         {{ form.course_name.errors }}
@@ -29,9 +25,7 @@ Session{%endblock %} {% block content %}
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.session_date.id_for_label }}"
-        >{{ form.session_date.label }}</label
-      >
+      <label class="form-label" for="{{ form.session_date.id_for_label }}">{{ form.session_date.label }}</label>
       {{ form.session_date }} {% if form.session_date.errors %}
       <div class="help-text" style="color: #f44336">
         {{ form.session_date.errors }}
@@ -42,9 +36,7 @@ Session{%endblock %} {% block content %}
     <div class="row">
       <div class="col-md-6">
         <div class="form-group">
-          <label class="form-label" for="{{ form.start_time.id_for_label }}"
-            >{{ form.start_time.label }}</label
-          >
+          <label class="form-label" for="{{ form.start_time.id_for_label }}">{{ form.start_time.label }}</label>
           {{ form.start_time }} {% if form.start_time.errors %}
           <div class="help-text" style="color: #f44336">
             {{ form.start_time.errors }}
@@ -54,9 +46,7 @@ Session{%endblock %} {% block content %}
       </div>
       <div class="col-md-6">
         <div class="form-group">
-          <label class="form-label" for="{{ form.end_time.id_for_label }}"
-            >{{ form.end_time.label }}</label
-          >
+          <label class="form-label" for="{{ form.end_time.id_for_label }}">{{ form.end_time.label }}</label>
           {{ form.end_time }} {% if form.end_time.errors %}
           <div class="help-text" style="color: #f44336">
             {{ form.end_time.errors }}
@@ -66,34 +56,40 @@ Session{%endblock %} {% block content %}
       </div>
     </div>
 
-    <div
-      class="card"
-      style="background: #f5f5f5; padding: 16px; margin: 20px 0"
-    >
-      <h3 style="margin-top: 0">Automated Attendance Settings</h3>
+    <div class="card"
+      style="background: var(--bg-hover); padding: 20px; margin: 24px 0; border: 1px solid var(--border-color);">
+      <!-- HEADER + SWITCH ROW -->
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 24px;">
+        <div style="padding-right: 20px;">
+          <h3 style="margin: 0; margin-bottom: 8px;">Automated Attendance Settings</h3>
+          <p class="text-muted" style="margin: 0; font-size: 0.9rem; line-height: 1.4;">
+            Automatically capture and mark attendance during session time.
+          </p>
+        </div>
 
-      <div class="form-group">
-        <div class="form-check">
-          {{ form.auto_capture }}
-          <label
-            class="form-check-label"
-            for="{{ form.auto_capture.id_for_label }}"
-          >
-            {{ form.auto_capture.label }}
+        <div style="display: flex; align-items: center; gap: 12px; padding-top: 4px;">
+          <span
+            style="font-size: 0.8rem; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">ENABLE</span>
+          <label class="switch-container">
+            {{ form.auto_capture }}
+            <span class="switch-slider"></span>
           </label>
         </div>
-        {% if form.auto_capture.help_text %}
-        <span class="help-text">{{ form.auto_capture.help_text }}</span>
-        {% endif %}
       </div>
 
-      <div class="form-group" id="capture-interval-group">
-        <label class="form-label" for="{{ form.capture_interval.id_for_label }}"
-          >{{ form.capture_interval.label }}</label
-        >
-        {{ form.capture_interval }} {% if form.capture_interval.help_text %}
+      <!-- INTERVAL FIELD (Border Top) -->
+      <div class="form-group" id="capture-interval-group"
+        style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 24px;">
+        <label class="form-label" for="{{ form.capture_interval.id_for_label }}">
+          {{ form.capture_interval.label }}
+        </label>
+        {{ form.capture_interval }}
+
+        {% if form.capture_interval.help_text %}
         <span class="help-text">{{ form.capture_interval.help_text }}</span>
-        {% endif %} {% if form.capture_interval.errors %}
+        {% endif %}
+
+        {% if form.capture_interval.errors %}
         <div class="help-text" style="color: #f44336">
           {{ form.capture_interval.errors }}
         </div>
@@ -101,45 +97,47 @@ Session{%endblock %} {% block content %}
       </div>
 
       <!-- Location fields -->
-      <div class="form-group">
+      <div class="form-group" style="margin-top: 24px;">
         <label class="form-label">{{ form.location_name.label }}</label>
         {{ form.location_name }}
-        <button
-          type="button"
-          class="btn btn-secondary"
-          id="get-location-btn"
-          style="margin-top: 8px"
-        >
-          📍 Get Current Location
-        </button>
-        <span class="help-text"
-          >Location will be captured for all automated attendance records</span
-        >
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+          <button type="button" class="btn btn-secondary" id="get-location-btn" onclick="captureSessionLocation()">
+            📍 Get Current Location
+          </button>
+          <span class="help-text" style="margin: 0;">
+            Location will be captured for all automated attendance records
+          </span>
+        </div>
       </div>
 
       <!-- Hidden location fields -->
       {{ form.latitude }} {{ form.longitude }} {{ form.device_id }}
 
-      <div
-        class="alert"
-        style="
-          background: #e3f2fd;
-          padding: 12px;
-          border-left: 4px solid #2196f3;
-        "
-      >
-        <strong>Note:</strong> When automated attendance is enabled, the system
-        will:
-        <ul style="margin: 8px 0 0 20px">
-          <li>Automatically capture photos during the session time</li>
-          <li>Mark attendance at 0.5 confidence threshold</li>
+      <div class="alert" style="
+          background: rgba(33, 150, 243, 0.1);
+          color: var(--text-main);
+          padding: 16px;
+          border-left: 4px solid var(--primary);
+          border-radius: 8px;
+          margin-top: 24px;
+        ">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span class="material-icons text-primary" style="font-size: 20px;">info</span>
+          <strong class="text-primary">System Behavior</strong>
+        </div>
+        <ul style="margin: 0; padding-left: 24px; color: var(--text-muted);">
+          <li style="margin-bottom: 4px;">Automatically capture photos during the session time</li>
+          <li style="margin-bottom: 4px;">Mark attendance at 0.5 confidence threshold</li>
           <li>Save all captures with timestamps and location data</li>
         </ul>
       </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Create Session</button>
-    <a href="{% url 'view_sessions' %}" class="btn btn-secondary">Cancel</a>
+    <div style="display: flex; gap: 16px; margin-top: 32px;">
+      <button type="submit" class="btn btn-primary" style="min-width: 150px;">Create Session</button>
+      <a href="{% url 'view_sessions' %}" class="btn btn-secondary">Cancel</a>
+    </div>
   </form>
 </div>
 {% endblock %} {% block extra_js %}
@@ -152,77 +150,97 @@ Session{%endblock %} {% block content %}
 
   if (autoCapture && intervalGroup) {
     function toggleInterval() {
-      intervalGroup.style.display = autoCapture.checked ? "block" : "none";
+      if (autoCapture.checked) {
+        intervalGroup.style.display = "block";
+      } else {
+        intervalGroup.style.display = "none";
+      }
     }
 
     autoCapture.addEventListener("change", toggleInterval);
     toggleInterval(); // Initialize on page load
   }
 
-  // Location detection
-  const getLocationBtn = document.getElementById("get-location-btn");
-  const latitudeField = document.getElementById("session_latitude");
-  const longitudeField = document.getElementById("session_longitude");
-  const locationNameField = document.getElementById("session_location_name");
-  const deviceIdField = document.getElementById("session_device_id");
+  // Robust Location Capture (Global Function)
+  window.captureSessionLocation = function () {
+    console.log("captureSessionLocation called");
+    const btn = document.getElementById("get-location-btn");
+    const latitudeField = document.getElementById("session_latitude");
+    const longitudeField = document.getElementById("session_longitude");
+    const locationNameField = document.getElementById("session_location_name");
+    const deviceIdField = document.getElementById("session_device_id");
 
-  if (getLocationBtn) {
-    getLocationBtn.addEventListener("click", function () {
-      if (!navigator.geolocation) {
-        alert("Geolocation is not supported by your browser");
-        return;
-      }
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
 
-      getLocationBtn.textContent = "📍 Getting location...";
-      getLocationBtn.disabled = true;
+    btn.textContent = "⏳ Getting location...";
+    btn.disabled = true;
 
-      navigator.geolocation.getCurrentPosition(
-        function (position) {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
 
-          latitudeField.value = lat;
-          longitudeField.value = lon;
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        console.log("Position obtained", position);
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
 
-          // Generate device ID if not exists
-          if (!deviceIdField.value) {
-            deviceIdField.value = "web_" + Date.now();
-          }
+        if (latitudeField) latitudeField.value = lat;
+        if (longitudeField) longitudeField.value = lon;
 
-          // Reverse geocoding to get location name
-          fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
-          )
-            .then((response) => response.json())
-            .then((data) => {
-              const locationName =
-                data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-              locationNameField.value = locationName;
-              getLocationBtn.textContent = "✓ Location Captured";
-              getLocationBtn.disabled = false;
-              getLocationBtn.style.backgroundColor = "#4caf50";
-            })
-            .catch((error) => {
-              console.error("Geocoding error:", error);
-              locationNameField.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-              getLocationBtn.textContent = "✓ Location Captured";
-              getLocationBtn.disabled = false;
-              getLocationBtn.style.backgroundColor = "#4caf50";
-            });
-        },
-        function (error) {
-          console.error("Geolocation error:", error);
-          alert("Unable to get location: " + error.message);
-          getLocationBtn.textContent = "📍 Get Current Location";
-          getLocationBtn.disabled = false;
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
+        // Generate device ID if not exists
+        if (deviceIdField && !deviceIdField.value) {
+          deviceIdField.value = "web_" + Date.now();
         }
-      );
-    });
-  }
+
+        // Reverse geocoding
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+
+        fetch(url, { headers: { 'User-Agent': 'TrackApp/1.0' } })
+          .then((response) => response.json())
+          .then((data) => {
+            const locationName = data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            if (locationNameField) locationNameField.value = locationName;
+
+            btn.textContent = "✓ Location Captured";
+            btn.disabled = false;
+            btn.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+            btn.style.color = "#34d399";
+            btn.style.borderColor = "#34d399";
+          })
+          .catch((error) => {
+            console.error("Geocoding error:", error);
+            if (locationNameField) locationNameField.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            btn.textContent = "✓ Location Captured";
+            btn.disabled = false;
+            btn.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+          });
+      },
+      function (error) {
+        console.error("Geolocation error:", error);
+        let msg = "Unknown error";
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            msg = "User denied the request for Geolocation.";
+            break;
+          case error.POSITION_UNAVAILABLE:
+            msg = "Location information is unavailable.";
+            break;
+          case error.TIMEOUT:
+            msg = "The request to get user location timed out.";
+            break;
+        }
+        alert("Unable to get location: " + msg);
+        btn.textContent = "📍 Get Current Location";
+        btn.disabled = false;
+      },
+      options
+    );
+  };
 </script>
 {% endblock %}

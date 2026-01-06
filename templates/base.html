@@ -1,54 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Face Recognition Attendance System{% endblock %}</title>
+    <title>{% block title %}Moral Quandary{% endblock %}</title>
     {% load static %}
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Fonts managed in CSS -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v={% now 'U' %}">
     {% block extra_css %}{% endblock %}
 </head>
+
 <body>
     {% if request.session.student_id or request.session.teacher_id %}
     <nav class="navbar">
-        <div class="container" style="display: flex; align-items: center; justify-content: space-between;">
-            <a href="{% if request.session.student_id %}{% url 'student_dashboard' %}{% else %}{% url 'teacher_dashboard' %}{% endif %}" class="navbar-brand">
-                Face Recognition Attendance
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <a href="{% if request.session.student_id %}{% url 'student_dashboard' %}{% else %}{% url 'teacher_dashboard' %}{% endif %}"
+                class="navbar-brand">
+                <span class="material-icons text-primary">face</span>
+                <span>Moral Quandary</span>
             </a>
             <ul class="navbar-nav">
                 {% if request.session.student_id %}
-                    <li><a href="{% url 'student_dashboard' %}">Dashboard</a></li>
-                    <li><a href="{% url 'student_attendance' %}">My Attendance</a></li>
+                <li><a href="{% url 'student_dashboard' %}">Dashboard</a></li>
+                <li><a href="{% url 'student_attendance' %}">Attendance</a></li>
                 {% elif request.session.teacher_id %}
-                    <li><a href="{% url 'teacher_dashboard' %}">Dashboard</a></li>
-                    <li><a href="{% url 'view_students' %}">Students</a></li>
-                    <li><a href="{% url 'mark_attendance' %}">Mark Attendance</a></li>
-                    <li><a href="{% url 'view_records' %}">Records</a></li>
-                    <li><a href="{% url 'view_sessions' %}">Sessions</a></li>
-                    <li><a href="{% url 'train_model' %}">Train Model</a></li>
+                <li><a href="{% url 'teacher_dashboard' %}">Dashboard</a></li>
+                <li><a href="{% url 'view_students' %}">Students</a></li>
+                <li><a href="{% url 'mark_attendance' %}">Mark</a></li>
+                <li><a href="{% url 'view_records' %}">Records</a></li>
+                <li><a href="{% url 'view_sessions' %}">Sessions</a></li>
+                <li><a href="{% url 'train_model' %}">Train</a></li>
                 {% endif %}
-                <li><a href="{% url 'logout' %}">Logout</a></li>
+                <li><a href="{% url 'logout' %}" class="btn btn-outline btn-sm">Logout</a></li>
+                <li>
+                    <button id="theme-toggle" class="theme-toggle" title="Toggle Theme">
+                        <span class="material-icons">light_mode</span>
+                    </button>
+                </li>
             </ul>
         </div>
     </nav>
     {% endif %}
 
-    <div class="container">
+    <div class="container animate-fade">
         {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }}">
-                    {{ message }}
-                </div>
-            {% endfor %}
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+        {% endfor %}
         {% endif %}
 
         {% block content %}{% endblock %}
     </div>
 
-    <script src="{% static 'js/main.js' %}"></script>
+    <script>
+        const toggleBtn = document.getElementById('theme-toggle');
+        const icon = toggleBtn ? toggleBtn.querySelector('span') : null;
+
+        // Check saved theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            if (icon) icon.textContent = 'dark_mode';
+        }
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                if (currentTheme === 'light') {
+                    document.documentElement.removeAttribute('data-theme');
+                    localStorage.setItem('theme', 'dark');
+                    icon.textContent = 'light_mode';
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    localStorage.setItem('theme', 'light');
+                    icon.textContent = 'dark_mode';
+                }
+            });
+        }
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
-</html>
 
+</html>

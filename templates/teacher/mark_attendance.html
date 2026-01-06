@@ -7,9 +7,7 @@ Attendance{%endblock %} {% block content %}
     {% csrf_token %}
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.session.id_for_label }}"
-        >{{ form.session.label }}</label
-      >
+      <label class="form-label" for="{{ form.session.id_for_label }}">{{ form.session.label }}</label>
       {{ form.session }} {% if form.session.errors %}
       <div class="help-text" style="color: #f44336">
         {{ form.session.errors }}
@@ -18,9 +16,7 @@ Attendance{%endblock %} {% block content %}
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.image.id_for_label }}"
-        >{{ form.image.label }}</label
-      >
+      <label class="form-label" for="{{ form.image.id_for_label }}">{{ form.image.label }}</label>
       {{ form.image }} {% if form.image.help_text %}
       <span class="help-text">{{ form.image.help_text }}</span>
       {% endif %} {% if form.image.errors %}
@@ -28,17 +24,11 @@ Attendance{%endblock %} {% block content %}
         {{ form.image.errors }}
       </div>
       {% endif %}
-      <img
-        id="attendance-image-preview"
-        class="image-preview"
-        style="display: none; margin-top: 16px"
-      />
+      <img id="attendance-image-preview" class="image-preview" style="display: none; margin-top: 16px" />
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.threshold.id_for_label }}"
-        >{{ form.threshold.label }}</label
-      >
+      <label class="form-label" for="{{ form.threshold.id_for_label }}">{{ form.threshold.label }}</label>
       {{ form.threshold }} {% if form.threshold.help_text %}
       <span class="help-text">{{ form.threshold.help_text }}</span>
       {% endif %} {% if form.threshold.errors %}
@@ -49,16 +39,10 @@ Attendance{%endblock %} {% block content %}
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.location_name.id_for_label }}"
-        >{{ form.location_name.label }}</label
-      >
+      <label class="form-label" for="{{ form.location_name.id_for_label }}">{{ form.location_name.label }}</label>
       {{ form.location_name }} {{ form.latitude }} {{ form.longitude }}
-      <button
-        type="button"
-        class="btn btn-secondary"
-        id="get-location-btn"
-        style="margin-top: 8px"
-      >
+      <button type="button" class="btn btn-secondary" id="get-location-btn" onclick="captureLocation()"
+        style="margin-top: 8px">
         📍 Get Current Location
       </button>
       <span class="help-text">Click to capture your current GPS location</span>
@@ -83,7 +67,8 @@ Attendance{%endblock %} {% block content %}
       {% for result in results %}
       <tr>
         <td>
-          {% if result.student %} {{ result.student.student_id }} - {{result.student.first_name }} {{ result.student.last_name }}
+          {% if result.student %} {{ result.student.student_id }} - {{result.student.first_name }} {{
+          result.student.last_name }}
           {% elif result.student_id %} {{ result.student_id }} (Not found in database)
           {% else %} Unknown {% endif %}
         </td>
@@ -109,7 +94,7 @@ Attendance{%endblock %} {% block content %}
 </div>
 {% endif %} {% endblock %} {% block extra_js %}
 <script>
-  // Setup image preview
+  // Image Preview Setup
   const input = document.getElementById("attendance-image-input");
   const preview = document.getElementById("attendance-image-preview");
 
@@ -129,55 +114,78 @@ Attendance{%endblock %} {% block content %}
     });
   }
 
-  // Location capture
-  const getLocationBtn = document.getElementById("get-location-btn");
-  const latitudeInput = document.getElementById("id_latitude");
-  const longitudeInput = document.getElementById("id_longitude");
-  const locationNameInput = document.getElementById("id_location_name");
+  // Global Location Function
+  window.captureLocation = function () {
+    console.log("captureLocation called");
+    const btn = document.getElementById("get-location-btn");
+    const latitudeInput = document.getElementById("id_latitude");
+    const longitudeInput = document.getElementById("id_longitude");
+    const locationNameInput = document.getElementById("id_location_name");
 
-  if (getLocationBtn) {
-    getLocationBtn.addEventListener("click", function () {
-      if (!navigator.geolocation) {
-        alert("Geolocation is not supported by your browser");
-        return;
-      }
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
 
-      getLocationBtn.textContent = "⏳ Getting location...";
-      getLocationBtn.disabled = true;
+    btn.textContent = "⏳ Getting location...";
+    btn.disabled = true;
 
-      navigator.geolocation.getCurrentPosition(
-        function (position) {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
 
-          latitudeInput.value = lat;
-          longitudeInput.value = lon;
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        console.log("Position obtained:", position);
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
 
-          // Reverse geocoding to get location name (using OpenStreetMap Nominatim)
-          fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
-          )
-            .then((response) => response.json())
-            .then((data) => {
-              const locationName =
-                data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-              locationNameInput.value = locationName;
-              getLocationBtn.textContent = "✓ Location Captured";
-              getLocationBtn.disabled = false;
-            })
-            .catch((error) => {
-              locationNameInput.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-              getLocationBtn.textContent = "✓ Location Captured";
-              getLocationBtn.disabled = false;
-            });
-        },
-        function (error) {
-          alert("Unable to get location: " + error.message);
-          getLocationBtn.textContent = "📍 Get Current Location";
-          getLocationBtn.disabled = false;
+        if (latitudeInput) latitudeInput.value = lat;
+        if (longitudeInput) longitudeInput.value = lon;
+
+        // Reverse geocoding
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+
+        fetch(url, { headers: { 'User-Agent': 'TrackApp/1.0' } })
+          .then((response) => {
+            if (!response.ok) throw new Error("Network response was not ok");
+            return response.json();
+          })
+          .then((data) => {
+            const locationName = data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            if (locationNameInput) locationNameInput.value = locationName;
+            btn.textContent = "✓ Location Captured";
+            btn.disabled = false;
+          })
+          .catch((error) => {
+            console.error("Geocoding error:", error);
+            if (locationNameInput) locationNameInput.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            btn.textContent = "✓ Location Captured (Coords)";
+            btn.disabled = false;
+          });
+      },
+      function (error) {
+        console.error("Geolocation error:", error);
+        let msg = "Unknown error";
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            msg = "User denied the request for Geolocation.";
+            break;
+          case error.POSITION_UNAVAILABLE:
+            msg = "Location information is unavailable.";
+            break;
+          case error.TIMEOUT:
+            msg = "The request to get user location timed out.";
+            break;
         }
-      );
-    });
-  }
+        alert("Unable to get location: " + msg);
+        btn.textContent = "📍 Get Current Location";
+        btn.disabled = false;
+      },
+      options
+    );
+  };
 </script>
 {% endblock %}
