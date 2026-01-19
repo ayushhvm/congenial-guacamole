@@ -470,11 +470,24 @@ class AutomatedAttendanceCapture:
             presence_percentage = (total_appearances / total_captures) * 100
             
             # Verification logic
-            is_verified = (
-                present_in_start and 
-                present_in_end and 
-                total_appearances > majority_threshold
-            )
+            # Modified: 
+            # 1. Standard: Start + End + Majority (>50%)
+            # 2. High Participation: >75% of captures (overrides Start/End requirement)
+            
+            high_participation_threshold = total_captures * 0.75
+            
+            is_verified = False
+            verification_method = ""
+            
+            # Check Standard Criteria
+            if present_in_start and present_in_end and total_appearances > majority_threshold:
+                is_verified = True
+                verification_method = "Standard (Start + End + >50%)"
+                
+            # Check High Participation Criteria (Relaxed)
+            elif total_appearances > high_participation_threshold:
+                is_verified = True
+                verification_method = "High Participation (>75%)"
             
             # Update attendance record
             record.total_captures = total_appearances
@@ -484,9 +497,10 @@ class AutomatedAttendanceCapture:
             
             if is_verified:
                 record.status = 'present'
-                record.verification_notes = f"Verified: Present in {total_appearances}/{total_captures} captures ({presence_percentage:.1f}%)"
+                record.verification_notes = f"Verified ({verification_method}): {total_appearances}/{total_captures} captures ({presence_percentage:.1f}%)"
                 verified_count += 1
                 print(f"✓ {student.student_id} - {student.first_name} {student.last_name}: PRESENT")
+                print(f"  └─ Method: {verification_method}")
                 print(f"  └─ {total_appearances}/{total_captures} captures ({presence_percentage:.1f}%)")
                 print(f"  └─ Start: {'✓' if present_in_start else '✗'}, End: {'✓' if present_in_end else '✗'}")
             else:
@@ -497,7 +511,7 @@ class AutomatedAttendanceCapture:
                 if not present_in_end:
                     reasons.append("not present at end")
                 if total_appearances <= majority_threshold:
-                    reasons.append(f"only {total_appearances}/{total_captures} captures")
+                    reasons.append(f"only {total_appearances}/{total_captures} captures (needs >{int(majority_threshold)})")
                 
                 record.verification_notes = f"Rejected: {', '.join(reasons)}"
                 rejected_count += 1

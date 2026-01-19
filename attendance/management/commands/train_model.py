@@ -27,11 +27,26 @@ class Command(BaseCommand):
             action='store_true',
             help='Set this model as active after training'
         )
+        parser.add_argument(
+            '--classifier',
+            type=str,
+            choices=['knn', 'centroid'],
+            default='knn',
+            help='Classifier type: knn (k-Nearest Neighbors) or centroid (Centroid-based)'
+        )
+        parser.add_argument(
+            '--k',
+            type=int,
+            default=5,
+            help='Number of neighbors for k-NN classifier (only used with --classifier knn)'
+        )
 
     def handle(self, *args, **options):
         model_name = options['model_name']
         from_directory = options.get('from_directory')
         set_active = options['set_active']
+        classifier_type = options['classifier']
+        k_value = options['k']
 
         # Initialize face recognition system
         self.stdout.write('Initializing Face Recognition System...')
@@ -48,7 +63,7 @@ class Command(BaseCommand):
                 return
 
             self.stdout.write(self.style.SUCCESS(
-                f'Loaded {len(X)} faces from {len(set(Y))} people'
+                f'Total: {len(X)} embeddings loaded from {len(set(Y))} people'
             ))
 
             # Generate embeddings
@@ -88,13 +103,18 @@ class Command(BaseCommand):
             ))
 
         # Train the model
-        self.stdout.write('Training SVM classifier...')
+        classifier_display = f"{classifier_type.upper()}" + (f" (k={k_value})" if classifier_type == 'knn' else "")
+        self.stdout.write(f'Training {classifier_display} classifier...')
         
         # Create models directory if it doesn't exist
         os.makedirs(settings.FACE_MODELS_DIR, exist_ok=True)
         
         model_path = settings.FACE_MODELS_DIR / f'{model_name}.pkl'
-        accuracy = fr_system.train_model(embeddings, Y, str(model_path))
+        accuracy = fr_system.train_model(
+            embeddings, Y, str(model_path), 
+            classifier_type=classifier_type, 
+            k=k_value
+        )
 
         # Save model information to database
         encoder_path = str(model_path).replace('.pkl', '_encoder.pkl')
@@ -103,6 +123,7 @@ class Command(BaseCommand):
             model_name=model_name,
             model_file=str(model_path),
             encoder_file=encoder_path,
+            classifier_type=classifier_type,
             accuracy=accuracy,
             is_active=set_active
         )
@@ -115,6 +136,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'\nTraining complete!\n'
             f'Model: {model_name}\n'
+            f'Classifier: {classifier_display}\n'
             f'Accuracy: {accuracy * 100:.2f}%\n'
             f'Model file: {model_path}\n'
             f'Encoder file: {encoder_path}'

@@ -9,10 +9,25 @@
 <div class="card">
     <h2 class="card-title">Train New Model</h2>
     <p>This will train a new face recognition model using all registered students' face embeddings.</p>
-    
+
     <form method="post" id="train-form" onsubmit="setFormLoading('train-form', true);">
         {% csrf_token %}
-        <button type="submit" class="btn btn-primary">Train Model</button>
+
+        <div class="form-group">
+            <label class="form-label" for="classifier_type">Classifier Type</label>
+            <select name="classifier_type" id="classifier_type" class="form-control" onchange="toggleKValue()">
+                <option value="centroid">Centroid-based (Fast, recommended for 50+ students)</option>
+                <option value="knn">k-Nearest Neighbors (Robust, good for smaller datasets)</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="k-value-group" style="display: none;">
+            <label class="form-label" for="k_value">k Value (Number of neighbors)</label>
+            <input type="number" name="k_value" id="k_value" class="form-control" value="5" min="1" max="15">
+            <span class="help-text">Lower values (3-5) for smaller classes, higher (7-10) for larger classes</span>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Train Model</button>
     </form>
 </div>
 
@@ -23,6 +38,7 @@
         <thead>
             <tr>
                 <th>Model Name</th>
+                <th>Classifier</th>
                 <th>Accuracy</th>
                 <th>Created At</th>
                 <th>Status</th>
@@ -33,18 +49,25 @@
             <tr>
                 <td>{{ model.model_name }}</td>
                 <td>
-                    {% if model.accuracy %}
-                        {{ model.accuracy|floatformat:2 }}%
+                    {% if model.classifier_type == 'centroid' %}
+                    <span class="badge badge-info">Centroid</span>
                     {% else %}
-                        N/A
+                    <span class="badge badge-primary">k-NN</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if model.accuracy %}
+                    {{ model.accuracy|floatformat:2 }}%
+                    {% else %}
+                    N/A
                     {% endif %}
                 </td>
                 <td>{{ model.created_at|date:"Y-m-d H:i" }}</td>
                 <td>
                     {% if model.is_active %}
-                        <span class="badge badge-success">Active</span>
+                    <span class="badge badge-success">Active</span>
                     {% else %}
-                        <span class="badge badge-secondary">Inactive</span>
+                    <span class="badge badge-secondary">Inactive</span>
                     {% endif %}
                 </td>
             </tr>
@@ -71,6 +94,15 @@
             }
         }
     }
+
+    function toggleKValue() {
+        const classifierType = document.getElementById('classifier_type').value;
+        const kValueGroup = document.getElementById('k-value-group');
+        if (classifierType === 'knn') {
+            kValueGroup.style.display = 'block';
+        } else {
+            kValueGroup.style.display = 'none';
+        }
+    }
 </script>
 {% endblock %}
-

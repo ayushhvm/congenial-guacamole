@@ -140,6 +140,88 @@ class CosineKNNClassifier:
         return best_label, avg_score
 
 
+class CentroidClassifier:
+    """
+    Centroid-based classifier using Cosine Similarity.
+    Computes the mean embedding (centroid) for each class and compares 
+    query embeddings to these centroids.
+    
+    Pros: Very fast inference (only n_classes comparisons)
+    Cons: Less robust to noisy training data
+    """
+    def __init__(self):
+        self.centroids = None  # (n_classes, n_features)
+        self.classes = None    # (n_classes,)
+    
+    def fit(self, X, y):
+        """
+        Compute centroids for each class.
+        X: (n_samples, n_features)
+        y: (n_samples,)
+        """
+        X_norm = normalize(X)
+        y = np.array(y)
+        
+        unique_classes = np.unique(y)
+        centroids = []
+        
+        for cls in unique_classes:
+            class_samples = X_norm[y == cls]
+            centroid = np.mean(class_samples, axis=0)
+            # Re-normalize the centroid
+            centroid = centroid / (np.linalg.norm(centroid) + 1e-8)
+            centroids.append(centroid)
+        
+        self.centroids = np.array(centroids)
+        self.classes = unique_classes
+    
+    def predict(self, X):
+        """
+        Predict class labels for samples in X.
+        """
+        if len(X.shape) == 1:
+            X = X.reshape(1, -1)
+        
+        X_norm = normalize(X)
+        # Dot product with centroids
+        similarities = np.dot(X_norm, self.centroids.T)  # (n_query, n_classes)
+        best_indices = np.argmax(similarities, axis=1)
+        return self.classes[best_indices]
+    
+    def predict_score(self, x_single):
+        """
+        Predict (label, confidence_score) for a single sample.
+        """
+        x_norm = normalize(x_single.reshape(1, -1))
+        similarities = np.dot(x_norm, self.centroids.T).flatten()
+        best_idx = np.argmax(similarities)
+        return self.classes[best_idx], similarities[best_idx]
+
+
+# Classifier Types
+CLASSIFIER_KNN = 'knn'
+CLASSIFIER_CENTROID = 'centroid'
+
+def get_classifier(classifier_type='knn', **kwargs):
+    """
+    Factory function to get a classifier instance.
+    
+    Args:
+        classifier_type: 'knn' or 'centroid'
+        **kwargs: Additional arguments for the classifier (e.g., k=5 for k-NN)
+    
+    Returns:
+        Classifier instance
+    """
+    if classifier_type == CLASSIFIER_KNN:
+        k = kwargs.get('k', 5)
+        return CosineKNNClassifier(k=k)
+    elif classifier_type == CLASSIFIER_CENTROID:
+        return CentroidClassifier()
+    else:
+        raise ValueError(f"Unknown classifier type: {classifier_type}. Use 'knn' or 'centroid'.")
+
+
 class FaceRecognitionSystem:
     """
     Complete face recognition system using InsightFace (ArcFace)
@@ -249,7 +331,13 @@ class FaceRecognitionSystem:
                 return []
             
             recognitions = []
-            for face in faces:
+            
+            # Temporary storage to handle duplicates in the same frame
+            # Map: student_id -> (confidence, face_idx)
+            best_match_for_id = {}
+            temp_results = []
+            
+            for idx, face in enumerate(faces):
                 bbox = face.bbox.astype(int) # x1, y1, x2, y2
                 # Convert to x, y, w, h format for compatibility
                 x, y, w, h = bbox[0], bbox[1], bbox[2]-bbox[0], bbox[3]-bbox[1]
@@ -257,16 +345,54 @@ class FaceRecognitionSystem:
                 
                 embedding = face.embedding
                 if embedding is None:
-                    recognitions.append((None, 0.0, bbox_fmt, "No embedding"))
+                    # Keep failed embeddings as they don't conflict
+                    temp_results.append((None, 0.0, bbox_fmt, "No embedding"))
                     continue
                 
                 name, confidence = self.predict(embedding, threshold)
                 
                 if name is None:
-                    recognitions.append((None, confidence, bbox_fmt, "Confidence too low"))
+                    temp_results.append((None, confidence, bbox_fmt, "Confidence too low"))
                 else:
-                    recognitions.append((name, confidence, bbox_fmt, "Success"))
+                    # Potential match found
+                    # Store with index to resolve conflicts later
+                    temp_results.append({'idx': idx, 'name': name, 'conf': confidence, 'bbox': bbox_fmt, 'type': 'match'})
+                    
+                    # Logic to ensure 1 person = 1 face per frame
+                    if name in best_match_for_id:
+                        prev_conf, prev_idx = best_match_for_id[name]
+                        if confidence > prev_conf:
+                            # Current face is better match for this person
+                            best_match_for_id[name] = (confidence, idx)
+                        else:
+                            # Previous face was better, ignore this one for this person
+                            pass
+                    else:
+                        # First time seeing this person in this frame
+                        best_match_for_id[name] = (confidence, idx)
             
+            # Finalize results
+            for item in temp_results:
+                if isinstance(item, tuple):
+                    recognitions.append(item)
+                else:
+                    # It's a potential match
+                    name = item['name']
+                    idx = item['idx']
+                    bbox = item['bbox']
+                    conf = item['conf']
+                    
+                    best_conf, best_idx = best_match_for_id.get(name, (0, -1))
+                    
+                    if idx == best_idx:
+                        # This matches the best face for this ID
+                        recognitions.append((name, conf, bbox, "Success"))
+                    else:
+                        # This face was identified as 'name', but another face had higher confidence for 'name'
+                        # So this face is likely NOT 'name', or is a duplicate.
+                        # We should mark it as Unknown or Low Confidence to avoid duplicate attendance
+                        recognitions.append((None, conf, bbox, f"Duplicate ID suppression (Best: {best_conf:.2f})"))
+
             return recognitions
             
         except Exception as e:
@@ -298,19 +424,73 @@ class FaceRecognitionSystem:
                 if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
                     continue
                 
+                # Check original image
                 # Use process_image to get embedding directly with QUALITY CHECK
                 # 0.65 is reasonable for "good" faces
-                embedding, _ = self.process_image(img_path, min_score=0.65) 
-                
-                if embedding is not None:
-                    X.append(embedding) # Store EMBEDDINGS not IMAGES
-                    Y.append(person_name)
-                    faces_loaded += 1
-            
-            print(f"Loaded {faces_loaded} faces for {person_name}")
+                try:
+                    img = cv.imread(img_path)
+                    if img is None:
+                        continue
+
+                    # 1. Process Original
+                    # We pass the loaded image directly to avoid re-reading, but our process_image currently takes path or we need to overload it.
+                    # Let's just use the existing process_image by path for consistency if possible, 
+                    # OR better, since we need to flip, let's modify logic to accept image array.
+                    
+                    # NOTE: process_image takes image_path. Let's refactor slightly to handle in-memory image 
+                    # or just manually do what process_image does here for the flip.
+                    
+                    # Original
+                    embedding_orig, _ = self._process_image_internal(img, min_score=0.65)
+                    if embedding_orig is not None:
+                        X.append(embedding_orig)
+                        Y.append(person_name)
+                        faces_loaded += 1
+                        
+                    # 2. Process Flipped (Augmentation)
+                    img_flipped = cv.flip(img, 1) # 1 = Horizontal flip
+                    embedding_flip, _ = self._process_image_internal(img_flipped, min_score=0.65)
+                    if embedding_flip is not None:
+                        X.append(embedding_flip)
+                        Y.append(person_name)
+                        # We don't increment faces_loaded for augmentation to avoid confusion in logs, 
+                        # or we can mention it. Let's count it.
+                        faces_loaded += 1
+
+                except Exception as e:
+                    print(f"Error processing {img_path}: {e}")
+
+                except Exception as e:
+                    print(f"Error processing {img_path}: {e}")
+
+            print(f"  > {person_name}: Processed {faces_loaded//2} files -> {faces_loaded} embeddings (100% augmentation)")
         
         # NOTE: This now returns EMBEDDINGS in X, not images.
         return np.asarray(X), np.asarray(Y)
+
+    def _process_image_internal(self, img, min_score=0.0):
+        """
+        Internal helper to process an already loaded image array.
+        """
+        if self.arcface_app is None:
+            self.initialize_arcface()
+            
+        faces = self.arcface_app.get(img)
+        
+        if not faces:
+            return None, None
+            
+        # Sort by largest area
+        faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
+        best_face = faces[0]
+        
+        if best_face.det_score < min_score:
+            return None, None
+        
+        embedding = best_face.embedding
+        face_img = face_align.norm_crop(img, landmark=best_face.kps)
+        
+        return embedding, face_img
     
     def generate_embeddings(self, faces):
         """
@@ -334,16 +514,26 @@ class FaceRecognitionSystem:
                 embeddings.append(np.zeros(512))
         return np.asarray(embeddings)
     
-    def train_model(self, X_embeddings, Y_labels, save_path=None):
+    def train_model(self, X_embeddings, Y_labels, save_path=None, classifier_type='knn', **classifier_kwargs):
         """
-        Train Classifier on face embeddings
+        Train Classifier on face embeddings.
+        
+        Args:
+            X_embeddings: (n_samples, n_features) array of embeddings
+            Y_labels: (n_samples,) array of labels (student IDs)
+            save_path: Path to save the trained model
+            classifier_type: 'knn' or 'centroid'
+            **classifier_kwargs: Additional args for the classifier (e.g., k=5)
+        
+        Returns:
+            Training accuracy
         """
         # Encode labels
         self.encoder = LabelEncoder()
         Y_encoded = self.encoder.fit_transform(Y_labels)
         
-        # Train Cosine Classifier
-        self.model = CosineKNNClassifier()
+        # Get classifier using factory
+        self.model = get_classifier(classifier_type, **classifier_kwargs)
         self.model.fit(X_embeddings, Y_encoded)
         
         # Save model if path provided
@@ -353,7 +543,7 @@ class FaceRecognitionSystem:
         # Calculate accuracy
         predictions = self.model.predict(X_embeddings)
         accuracy = np.mean(predictions == Y_encoded)
-        print(f"Training accuracy: {accuracy * 100:.2f}%")
+        print(f"Training accuracy ({classifier_type}): {accuracy * 100:.2f}%")
         
         return accuracy
     

@@ -486,6 +486,10 @@ def create_session(request):
 def train_model(request):
     """Train face recognition model"""
     if request.method == 'POST':
+        # Get classifier settings from form
+        classifier_type = request.POST.get('classifier_type', 'knn')
+        k_value = int(request.POST.get('k_value', 5))
+        
         # Get all students with face embeddings
         students_with_faces = Student.objects.filter(
             face_embeddings__isnull=False
@@ -522,8 +526,12 @@ def train_model(request):
         model_name = f'face_model_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
         model_path = settings.FACE_MODELS_DIR / f'{model_name}.pkl'
         
-        # Train model
-        accuracy = fr_system.train_model(embeddings, Y, str(model_path))
+        # Train model with selected classifier
+        accuracy = fr_system.train_model(
+            embeddings, Y, str(model_path),
+            classifier_type=classifier_type,
+            k=k_value
+        )
         
         # Save model information to database
         encoder_path = str(model_path).replace('.pkl', '_encoder.pkl')
@@ -535,12 +543,14 @@ def train_model(request):
             model_name=model_name,
             model_file=str(model_path),
             encoder_file=encoder_path,
+            classifier_type=classifier_type,
             accuracy=accuracy,
             is_active=True
         )
         
+        classifier_display = 'Centroid' if classifier_type == 'centroid' else f'k-NN (k={k_value})'
         messages.success(request, 
-            f'Model trained successfully! Accuracy: {accuracy * 100:.2f}%')
+            f'Model trained successfully with {classifier_display}! Accuracy: {accuracy * 100:.2f}%')
         return redirect('train_model')
     
     # Get all models

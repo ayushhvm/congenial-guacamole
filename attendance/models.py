@@ -182,10 +182,16 @@ class StudentCapture(models.Model):
 
 class FaceRecognitionModel(models.Model):
     """Model to store trained model information"""
+    CLASSIFIER_CHOICES = [
+        ('knn', 'k-Nearest Neighbors'),
+        ('centroid', 'Centroid-based'),
+    ]
+    
     model_name = models.CharField(max_length=100)
     model_file = models.CharField(max_length=500)  # Path to .pkl file
     encoder_file = models.CharField(max_length=500)  # Path to encoder .pkl file
     embeddings_file = models.CharField(max_length=500, blank=True, null=True)  # Path to .npz file
+    classifier_type = models.CharField(max_length=20, choices=CLASSIFIER_CHOICES, default='knn')
     accuracy = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=False)
